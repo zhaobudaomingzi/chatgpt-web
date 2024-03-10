@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { fetchResetAdvanced, fetchUpdateAdvanced, fetchUpdateUserAmt, fetchUpdateUserInfo, fetchUserAmt } from '../../../api/'
 import type { UserInfo, UserState } from './helper'
 import { defaultSetting, getLocalState, setLocalState } from './helper'
+import { fetchResetAdvanced, fetchUpdateAdvanced, fetchUpdateUserAmt, fetchUpdateUserInfo, fetchUserAmt } from '@/api'
 
 export const useUserStore = defineStore('user-store', {
   state: (): UserState => getLocalState(),
@@ -22,7 +22,9 @@ export const useUserStore = defineStore('user-store', {
     },
     // 对应页面加载时的读取，为空送10个
     async readUserAmt() {
-      this.userInfo.useAmount = (await (fetchUserAmt())).data ?? 10
+      const data = (await fetchUserAmt()).data
+      this.userInfo.limit = data?.limit
+      this.userInfo.useAmount = data?.amount ?? 10
     },
 
     async resetSetting() {
