@@ -149,16 +149,18 @@ export class ChatUsage {
   roomId: number
   chatId: ObjectId
   messageId: string
+  model: string
   promptTokens: number
   completionTokens: number
   totalTokens: number
   estimated: boolean
   dateTime: number
-  constructor(userId: ObjectId, roomId: number, chatId: ObjectId, messageId: string, usage: UsageResponse) {
+  constructor(userId: ObjectId, roomId: number, chatId: ObjectId, messageId: string, model: string, usage?: UsageResponse) {
     this.userId = userId
     this.roomId = roomId
     this.chatId = chatId
     this.messageId = messageId
+    this.model = model
     if (usage) {
       this.promptTokens = usage.prompt_tokens
       this.completionTokens = usage.completion_tokens
@@ -186,6 +188,7 @@ export class Config {
     public mailConfig?: MailConfig,
     public auditConfig?: AuditConfig,
     public advancedConfig?: AdvancedConfig,
+    public announceConfig?: AnnounceConfig,
   ) { }
 }
 
@@ -202,6 +205,13 @@ export class SiteConfig {
     public chatModels?: string,
     public globalAmount?: number,
     public usageCountLimit?: boolean,
+  ) { }
+}
+
+export class AnnounceConfig {
+  constructor(
+    public enabled: boolean,
+    public announceWords: string,
   ) { }
 }
 
