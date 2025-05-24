@@ -93,14 +93,14 @@ export async function getChatByMessageId(messageId: string) {
   return await chatCol.findOne({ 'options.messageId': messageId })
 }
 
-export async function updateChat(chatId: string, response: string, messageId: string, conversationId: string, model: string, usage: UsageResponse, previousResponse?: []) {
+export async function updateChat(chatId: string, reasoning: string, response: string, messageId: string, model: string, usage: UsageResponse, previousResponse?: []) {
   const query = { _id: new ObjectId(chatId) }
   const update = {
     $set: {
+      'reasoning': reasoning,
       'response': response,
       'model': model || '',
       'options.messageId': messageId,
-      'options.conversationId': conversationId,
       'options.prompt_tokens': usage?.prompt_tokens,
       'options.completion_tokens': usage?.completion_tokens,
       'options.total_tokens': usage?.total_tokens,
@@ -165,17 +165,6 @@ export async function updateRoomUsingContext(userId: string, roomId: number, usi
   const update = {
     $set: {
       usingContext: using,
-    },
-  }
-  const result = await roomCol.updateOne(query, update)
-  return result.modifiedCount > 0
-}
-
-export async function updateRoomAccountId(userId: string, roomId: number, accountId: string) {
-  const query = { userId, roomId }
-  const update = {
-    $set: {
-      accountId,
     },
   }
   const result = await roomCol.updateOne(query, update)
@@ -371,12 +360,19 @@ export async function createUser(email: string, password: string, roles?: UserRo
 
   userInfo.roles = roles
   userInfo.remark = remark
+
+  // Initialize user configuration with default settings
   if (limit_switch != null)
     userInfo.limit_switch = limit_switch
   if (useAmount != null)
     userInfo.useAmount = useAmount
   else
     userInfo.useAmount = config?.siteConfig?.globalAmount ?? 10
+
+  // Use the first item from the globally available chatModel configuration as the default model for new users
+  userInfo.config = new UserConfig()
+  userInfo.config.chatModel = config?.siteConfig?.chatModels.split(',')[0]
+
   await userCol.insertOne(userInfo)
   return userInfo
 }
@@ -457,7 +453,7 @@ async function initUserInfo(userInfo: WithId<UserInfo>) {
   if (userInfo.config == null)
     userInfo.config = new UserConfig()
   if (userInfo.config.chatModel == null)
-    userInfo.config.chatModel = 'gpt-3.5-turbo'
+    userInfo.config.chatModel = ''
   if (userInfo.roles == null || userInfo.roles.length <= 0) {
     userInfo.roles = []
     if (process.env.ROOT_USER === userInfo.email.toLowerCase())

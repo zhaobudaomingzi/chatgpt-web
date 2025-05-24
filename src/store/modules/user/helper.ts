@@ -35,10 +35,10 @@ export function defaultSetting(): UserState {
       name: '',
       description: '',
       root: false,
-      config: { chatModel: 'gpt-3.5-turbo' },
+      config: { chatModel: '' },
       roles: [],
       advanced: {
-        systemMessage: 'You are ChatGPT, a large language model trained by OpenAI. Follow the user\'s instructions carefully. Respond using markdown.',
+        systemMessage: 'You are a large language model. Follow the user\'s instructions carefully. Respond using markdown (latex start with $).',
         temperature: 0.8,
         top_p: 1,
         maxContextCount: 20,
@@ -53,11 +53,11 @@ export function getLocalState(): UserState {
   if (localSetting != null && localSetting.userInfo != null) {
     if (localSetting.userInfo.config == null) {
       localSetting.userInfo.config = new UserConfig()
-      localSetting.userInfo.config.chatModel = 'gpt-3.5-turbo'
+      localSetting.userInfo.config.chatModel = ''
     }
     if (!localSetting.userInfo.advanced) {
       localSetting.userInfo.advanced = {
-        systemMessage: 'You are ChatGPT, a large language model trained by OpenAI. Follow the user\'s instructions carefully. Respond using markdown.',
+        systemMessage: 'You are a large language model. Follow the user\'s instructions carefully. Respond using markdown (latex start with $).',
         temperature: 0.8,
         top_p: 1,
         maxContextCount: 20,

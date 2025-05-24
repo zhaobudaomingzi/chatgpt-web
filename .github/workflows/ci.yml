@@ -13,35 +13,27 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set node
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18.x
-
-      - name: Setup
-        run: npm i -g @antfu/ni
-
-      - name: Install
-        run: nci
-
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - run: pnpm install
       - name: Lint
-        run: nr lint
+        run: pnpm lint
 
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set node
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18.x
-
-      - name: Setup
-        run: npm i -g @antfu/ni
-
-      - name: Install
-        run: nci
-
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      - run: pnpm install
       - name: Typecheck
-        run: nr type-check
+        run: pnpm type-check
