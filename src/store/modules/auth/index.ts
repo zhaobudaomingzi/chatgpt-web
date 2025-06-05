@@ -1,16 +1,15 @@
-import { jwtDecode } from 'jwt-decode'
 import type { UserInfo } from '../user/helper'
+import { jwtDecode } from 'jwt-decode'
+import { fetchLogout, fetchSession } from '@/api'
+import { UserConfig } from '@/components/common/Setting/model'
+import { store } from '@/store/helper'
 import { useChatStore } from '../chat'
 import { useUserStore } from '../user'
 import { getToken, removeToken, setToken } from './helper'
-import { store } from '@/store/helper'
-import { fetchLogout, fetchSession } from '@/api'
-import { UserConfig } from '@/components/common/Setting/model'
 
 interface SessionResponse {
   auth: boolean
   authProxyEnabled: boolean
-  model: 'ChatGPTAPI' | 'ChatGPTUnofficialProxyAPI'
   allowRegister: boolean
   title: string
   chatModels: {
@@ -25,7 +24,7 @@ interface SessionResponse {
   }[]
   usageCountLimit: boolean
   showWatermark: boolean
-  userInfo: { name: string; description: string; avatar: string; userId: string; root: boolean; config: UserConfig }
+  userInfo: { name: string, description: string, avatar: string, userId: string, root: boolean, config: UserConfig }
 }
 
 export interface AuthState {
@@ -38,12 +37,6 @@ export const useAuthStore = defineStore('auth-store', {
     token: getToken(),
     session: null,
   }),
-
-  getters: {
-    isChatGPTAPI(state): boolean {
-      return state.session?.model === 'ChatGPTAPI'
-    },
-  },
 
   actions: {
     async getSession() {

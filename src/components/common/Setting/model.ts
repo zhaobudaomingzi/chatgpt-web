@@ -1,10 +1,7 @@
 export class ConfigState {
   timeoutMs?: number
   apiKey?: string
-  accessToken?: string
-  accessTokenExpiredTime?: string
   apiBaseUrl?: string
-  apiModel?: APIMODEL
   reverseProxy?: string
   socksProxy?: string
   socksAuth?: string
@@ -53,9 +50,9 @@ export interface TextAuditServiceOptions {
 }
 export enum TextAudioType {
   None = 0,
-  Request = 1 << 0, // 二进制 01
-  Response = 1 << 1, // 二进制 10
-  All = Request | Response, // 二进制 11
+  Request = 1, // 二进制 01
+  Response = 2, // 二进制 10
+  All = 3, // 二进制 11
 }
 
 export class AuditConfig {
@@ -123,9 +120,9 @@ export class UserPrompt {
   }
 }
 
-export type APIMODEL = 'ChatGPTAPI' | 'ChatGPTUnofficialProxyAPI' | undefined
+export type APIMODEL = 'ChatGPTAPI' | 'VLLM'
 
-export const apiModelOptions = ['ChatGPTAPI', 'ChatGPTUnofficialProxyAPI'].map((model: string) => {
+export const apiModelOptions = ['ChatGPTAPI', 'VLLM'].map((model: string) => {
   return {
     label: model,
     key: model,

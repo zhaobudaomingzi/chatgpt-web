@@ -1,6 +1,3 @@
-import { useUserStore } from '../user'
-import { getLocalState, setLocalState } from './helper'
-import { router } from '@/router'
 import {
   fetchClearChat,
   fetchCreateChatRoom,
@@ -11,9 +8,13 @@ import {
   fetchRenameChatRoom,
   fetchUpdateChatRoomChatModel,
   fetchUpdateChatRoomSearchEnabled,
+  fetchUpdateChatRoomThinkEnabled,
   fetchUpdateChatRoomUsingContext,
   fetchUpdateUserChatModel,
 } from '@/api'
+import { router } from '@/router'
+import { useUserStore } from '../user'
+import { getLocalState, setLocalState } from './helper'
 
 export const useChatStore = defineStore('chat-store', {
   state: (): Chat.ChatState => getLocalState(),
@@ -60,9 +61,7 @@ export const useChatStore = defineStore('chat-store', {
       callback && callback()
     },
 
-    async syncChat(h: Chat.History, lastId?: number, callback?: () => void,
-      callbackForStartRequest?: () => void,
-      callbackForEmptyMessage?: () => void) {
+    async syncChat(h: Chat.History, lastId?: number, callback?: () => void, callbackForStartRequest?: () => void, callbackForEmptyMessage?: () => void) {
       if (!h.uuid) {
         callback && callback()
         return
@@ -124,8 +123,19 @@ export const useChatStore = defineStore('chat-store', {
       }
     },
 
+    async setChatThinkEnabled(thinkEnabled: boolean, roomId: number) {
+      const index = this.history.findIndex(item => item.uuid === this.active)
+      if (index !== -1) {
+        this.history[index].thinkEnabled = thinkEnabled
+        await fetchUpdateChatRoomThinkEnabled(thinkEnabled, roomId)
+        this.recordState()
+      }
+    },
+
     async addHistory(history: Chat.History, chatData: Chat.Chat[] = []) {
-      await fetchCreateChatRoom(history.title, history.uuid, history.chatModel)
+      const result = await fetchCreateChatRoom(history.title, history.uuid, history.chatModel)
+      history.searchEnabled = result.data?.searchEnabled
+      history.thinkEnabled = result.data?.thinkEnabled
       this.history.unshift(history)
       this.chat.unshift({ uuid: history.uuid, data: chatData })
       this.active = history.uuid

@@ -1,21 +1,21 @@
 <script setup lang='ts'>
 import type { MessageReactive, UploadFileInfo } from 'naive-ui'
 import html2canvas from 'html2canvas'
-import { Message } from './components'
-import { useScroll } from './hooks/useScroll'
-import { useChat } from './hooks/useChat'
-import HeaderComponent from './components/Header/index.vue'
-import { HoverButton, SvgIcon } from '@/components/common'
-import { useBasicLayout } from '@/hooks/useBasicLayout'
-import { useAuthStore, useChatStore, usePromptStore, useUserStore } from '@/store'
 import {
   fetchChatAPIProcess,
   fetchChatResponseoHistory,
   fetchChatStopResponding,
 } from '@/api'
-import { t } from '@/locales'
-import { debounce } from '@/utils/functions/debounce'
+import { HoverButton, SvgIcon } from '@/components/common'
+import { useBasicLayout } from '@/hooks/useBasicLayout'
 import IconPrompt from '@/icons/Prompt.vue'
+import { t } from '@/locales'
+import { useAuthStore, useChatStore, usePromptStore, useUserStore } from '@/store'
+import { debounce } from '@/utils/functions/debounce'
+import { Message } from './components'
+import HeaderComponent from './components/Header/index.vue'
+import { useChat } from './hooks/useChat'
+import { useScroll } from './hooks/useScroll'
 
 const Prompt = defineAsyncComponent(() => import('@/components/common/Setting/Prompt.vue'))
 
@@ -186,7 +186,7 @@ async function onConversation() {
 
             scrollToBottomIfAtBottom()
           }
-          catch (error) {
+          catch {
             //
           }
         },
@@ -334,7 +334,7 @@ async function onRegenerate(index: number) {
               return fetchChatAPIOnce()
             }
           }
-          catch (error) {
+          catch {
             //
           }
         },
@@ -429,7 +429,7 @@ function handleExport() {
         ms.success(t('chat.exportSuccess'))
         Promise.resolve()
       }
-      catch (error: any) {
+      catch {
         ms.error(t('chat.exportFailed'))
       }
       finally {
@@ -514,7 +514,8 @@ async function loadMoreMessage(event: any) {
     nextTick(() => scrollTo(event.target.scrollHeight - scrollPosition))
   }, () => {
     loadingms = ms.loading(
-      '加载中...', {
+      '加载中...',
+      {
         duration: 0,
       },
     )
@@ -558,6 +559,19 @@ async function handleToggleSearchEnabled() {
     ms.success(t('chat.turnOnSearch'))
   else
     ms.warning(t('chat.turnOffSearch'))
+}
+
+async function handleToggleThinkEnabled() {
+  if (!currentChatHistory.value)
+    return
+
+  const thinkEnabled = currentChatHistory.value.thinkEnabled ?? false
+  currentChatHistory.value.thinkEnabled = !thinkEnabled
+  await chatStore.setChatThinkEnabled(!thinkEnabled, +uuid)
+  if (currentChatHistory.value.thinkEnabled)
+    ms.success(t('chat.turnOnThink'))
+  else
+    ms.warning(t('chat.turnOffThink'))
 }
 
 async function handleToggleUsingContext() {
@@ -625,7 +639,7 @@ function formatTooltip(value: number) {
 }
 
 // https://github.com/tusen-ai/naive-ui/issues/4887
-function handleFinish(options: { file: UploadFileInfo; event?: ProgressEvent }) {
+function handleFinish(options: { file: UploadFileInfo, event?: ProgressEvent }) {
   if (options.file.status === 'finished') {
     const response = (options.event?.target as XMLHttpRequest).response
     uploadFileKeysRef.value.push(`${response.data.fileKey}`)
@@ -671,9 +685,11 @@ onUnmounted(() => {
       :using-context="usingContext"
       :show-prompt="showPrompt"
       :search-enabled="currentChatHistory?.searchEnabled"
+      :think-enabled="currentChatHistory?.thinkEnabled"
       @export="handleExport"
       @toggle-using-context="handleToggleUsingContext"
       @toggle-search-enabled="handleToggleSearchEnabled"
+      @toggle-think-enabled="handleToggleThinkEnabled"
       @toggle-show-prompt="showPrompt = true"
     />
     <main class="flex-1 overflow-hidden">
@@ -787,8 +803,15 @@ onUnmounted(() => {
               @update-value="(val) => handleSyncChatModel(val)"
             />
             <HoverButton v-if="!isMobile" :tooltip="currentChatHistory?.searchEnabled ? $t('chat.clickTurnOffSearch') : $t('chat.clickTurnOnSearch')" :class="{ 'text-[#4b9e5f]': currentChatHistory?.searchEnabled, 'text-[#a8071a]': !currentChatHistory?.searchEnabled }" @click="handleToggleSearchEnabled">
-              <span class="text-xl">
+              <span class="text-xl flex items-center">
                 <SvgIcon icon="mdi:web" />
+                <span class="ml-1 text-sm">{{ currentChatHistory?.searchEnabled ? $t('chat.searchEnabled') : $t('chat.searchDisabled') }}</span>
+              </span>
+            </HoverButton>
+            <HoverButton v-if="!isMobile" :tooltip="currentChatHistory?.thinkEnabled ? $t('chat.clickTurnOffThink') : $t('chat.clickTurnOnThink')" :class="{ 'text-[#4b9e5f]': currentChatHistory?.thinkEnabled, 'text-[#a8071a]': !currentChatHistory?.thinkEnabled }" @click="handleToggleThinkEnabled">
+              <span class="text-xl flex items-center">
+                <SvgIcon icon="mdi:lightbulb-outline" />
+                <span class="ml-1 text-sm">{{ currentChatHistory?.thinkEnabled ? $t('chat.thinkEnabled') : $t('chat.thinkDisabled') }}</span>
               </span>
             </HoverButton>
             <NSlider v-model:value="userStore.userInfo.advanced.maxContextCount" :max="100" :min="0" :step="1" style="width: 88px" :format-tooltip="formatTooltip" @update:value="() => { userStore.updateSetting(false) }" />
@@ -821,6 +844,6 @@ onUnmounted(() => {
         </NSpace>
       </div>
     </footer>
-    <Prompt v-if="showPrompt" v-model:roomId="uuid" v-model:visible="showPrompt" />
+    <Prompt v-if="showPrompt" v-model:room-id="uuid" v-model:visible="showPrompt" />
   </div>
 </template>

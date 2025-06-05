@@ -1,11 +1,11 @@
 <script lang="ts" setup>
 import type { DataTableColumns } from 'naive-ui'
 import { NButton, NTag } from 'naive-ui'
-import { KeyConfig, Status, UserRole, apiModelOptions, userRoleOptions } from './model'
 import { fetchGetKeys, fetchUpdateApiKeyStatus, fetchUpsertApiKey } from '@/api'
+import { useBasicLayout } from '@/hooks/useBasicLayout'
 import { t } from '@/locales'
 import { useAuthStore } from '@/store'
-import { useBasicLayout } from '@/hooks/useBasicLayout'
+import { apiModelOptions, KeyConfig, Status, UserRole, userRoleOptions } from './model'
 
 const ms = useMessage()
 const dialog = useDialog()
@@ -252,10 +252,6 @@ onMounted(async () => {
               @update-value="value => keyConfig.keyModel = value"
             />
           </div>
-          <p v-if="!isMobile">
-            <a v-if="keyConfig.keyModel === 'ChatGPTAPI'" target="_blank" href="https://platform.openai.com/account/api-keys">Get Api Key</a>
-            <a v-else target="_blank" href="https://chat.openai.com/api/auth/session">Get Access Token</a>
-          </p>
         </div>
         <div class="flex items-center space-x-4">
           <span class="shrink-0 w-[100px]">{{ $t('setting.api') }}</span>

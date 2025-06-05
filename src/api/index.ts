@@ -1,8 +1,8 @@
 import type { AxiosProgressEvent, GenericAbortSignal } from 'axios'
-import { get, post } from '@/utils/request'
 import type { AnnounceConfig, AuditConfig, ConfigState, GiftCard, KeyConfig, MailConfig, SearchConfig, SiteConfig, Status, UserInfo, UserPassword, UserPrompt } from '@/components/common/Setting/model'
-import { useAuthStore, useUserStore } from '@/store'
 import type { SettingsState } from '@/store/modules/user/helper'
+import { useUserStore } from '@/store'
+import { get, post } from '@/utils/request'
 
 export function fetchAnnouncement<T = any>() {
   return post<T>({
@@ -23,29 +23,23 @@ export function fetchChatAPIProcess<T = any>(
     regenerate?: boolean
     prompt: string
     uploadFileKeys?: string[]
-    options?: { conversationId?: string; parentMessageId?: string }
+    options?: { conversationId?: string, parentMessageId?: string }
     signal?: GenericAbortSignal
-    onDownloadProgress?: (progressEvent: AxiosProgressEvent) => void },
+    onDownloadProgress?: (progressEvent: AxiosProgressEvent) => void
+  },
 ) {
   const userStore = useUserStore()
-  const authStore = useAuthStore()
 
-  let data: Record<string, any> = {
+  const data: Record<string, any> = {
     roomId: params.roomId,
     uuid: params.uuid,
     regenerate: params.regenerate || false,
     prompt: params.prompt,
     uploadFileKeys: params.uploadFileKeys,
     options: params.options,
-  }
-
-  if (authStore.isChatGPTAPI) {
-    data = {
-      ...data,
-      systemMessage: userStore.userInfo.advanced.systemMessage,
-      temperature: userStore.userInfo.advanced.temperature,
-      top_p: userStore.userInfo.advanced.top_p,
-    }
+    systemMessage: userStore.userInfo.advanced.systemMessage,
+    temperature: userStore.userInfo.advanced.temperature,
+    top_p: userStore.userInfo.advanced.top_p,
   }
 
   return post<T>({
@@ -275,6 +269,13 @@ export function fetchUpdateChatRoomSearchEnabled<T = any>(searchEnabled: boolean
   return post<T>({
     url: '/room-search-enabled',
     data: { searchEnabled, roomId },
+  })
+}
+
+export function fetchUpdateChatRoomThinkEnabled<T = any>(thinkEnabled: boolean, roomId: number) {
+  return post<T>({
+    url: '/room-think-enabled',
+    data: { thinkEnabled, roomId },
   })
 }
 

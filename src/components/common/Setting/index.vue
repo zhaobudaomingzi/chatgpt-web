@@ -1,32 +1,29 @@
 <script setup lang='ts'>
-import General from './General.vue'
-import Advanced from './Advanced.vue'
-import Statistics from './Statistics.vue'
-import About from './About.vue'
-import Site from './Site.vue'
-import Mail from './Mail.vue'
-import Audit from './Audit.vue'
-import Search from './Search.vue'
-import Gift from './Gift.vue'
-import User from './User.vue'
-import Key from './Keys.vue'
-import Password from './Password.vue'
-import TwoFA from './TwoFA.vue'
-import Announcement from './Anonuncement.vue'
 import { SvgIcon } from '@/components/common'
-import { useAuthStore, useUserStore } from '@/store'
-import { useBasicLayout } from '@/hooks/useBasicLayout'
 import ChatRecord from '@/components/common/Setting/ChatRecord.vue'
+import { useBasicLayout } from '@/hooks/useBasicLayout'
+import { useUserStore } from '@/store'
+import About from './About.vue'
+import Advanced from './Advanced.vue'
+import Announcement from './Anonuncement.vue'
+import Audit from './Audit.vue'
+import General from './General.vue'
+import Gift from './Gift.vue'
+import Key from './Keys.vue'
+import Mail from './Mail.vue'
+import Password from './Password.vue'
+import Search from './Search.vue'
+import Site from './Site.vue'
+import Statistics from './Statistics.vue'
+import TwoFA from './TwoFA.vue'
+import User from './User.vue'
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<Emit>()
 
 const userStore = useUserStore()
-const authStore = useAuthStore()
 const { isMobile } = useBasicLayout()
-
-const isChatGPTAPI = computed<boolean>(() => !!authStore.isChatGPTAPI)
 
 interface Props {
   visible: boolean
@@ -75,7 +72,7 @@ const show = computed({
           </template>
           <TwoFA />
         </NTabPane>
-        <NTabPane v-if="isChatGPTAPI" name="Advanced" tab="Advanced">
+        <NTabPane name="Advanced" tab="Advanced">
           <template #tab>
             <SvgIcon class="text-lg" icon="ri:equalizer-line" />
             <span class="ml-2">{{ $t('setting.advanced') }}</span>

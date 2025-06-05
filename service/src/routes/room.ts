@@ -10,6 +10,7 @@ import {
   updateRoomChatModel,
   updateRoomPrompt,
   updateRoomSearchEnabled,
+  updateRoomThinkEnabled,
   updateRoomUsingContext,
 } from '../storage/mongo'
 
@@ -29,6 +30,7 @@ router.get('/chatrooms', auth, async (req, res) => {
         usingContext: r.usingContext === undefined ? true : r.usingContext,
         chatModel: r.chatModel,
         searchEnabled: !!r.searchEnabled,
+        thinkEnabled: !!r.thinkEnabled,
       })
     })
     res.send({ status: 'Success', message: null, data: result })
@@ -79,7 +81,7 @@ router.get('/chatrooms-count', auth, async (req, res) => {
 router.post('/room-create', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { title, roomId, chatModel } = req.body as { title: string; roomId: number; chatModel: string }
+    const { title, roomId, chatModel } = req.body as { title: string, roomId: number, chatModel: string }
     const room = await createChatRoom(userId, title, roomId, chatModel)
     res.send({ status: 'Success', message: null, data: room })
   }
@@ -92,7 +94,7 @@ router.post('/room-create', auth, async (req, res) => {
 router.post('/room-rename', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { title, roomId } = req.body as { title: string; roomId: number }
+    const { title, roomId } = req.body as { title: string, roomId: number }
     const success = await renameChatRoom(userId, title, roomId)
     if (success)
       res.send({ status: 'Success', message: null, data: null })
@@ -108,7 +110,7 @@ router.post('/room-rename', auth, async (req, res) => {
 router.post('/room-prompt', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { prompt, roomId } = req.body as { prompt: string; roomId: number }
+    const { prompt, roomId } = req.body as { prompt: string, roomId: number }
     const success = await updateRoomPrompt(userId, roomId, prompt)
     if (success)
       res.send({ status: 'Success', message: 'Saved successfully', data: null })
@@ -124,7 +126,7 @@ router.post('/room-prompt', auth, async (req, res) => {
 router.post('/room-chatmodel', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { chatModel, roomId } = req.body as { chatModel: string; roomId: number }
+    const { chatModel, roomId } = req.body as { chatModel: string, roomId: number }
     const success = await updateRoomChatModel(userId, roomId, chatModel)
     if (success)
       res.send({ status: 'Success', message: 'Saved successfully', data: null })
@@ -140,8 +142,24 @@ router.post('/room-chatmodel', auth, async (req, res) => {
 router.post('/room-search-enabled', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { searchEnabled, roomId } = req.body as { searchEnabled: boolean; roomId: number }
+    const { searchEnabled, roomId } = req.body as { searchEnabled: boolean, roomId: number }
     const success = await updateRoomSearchEnabled(userId, roomId, searchEnabled)
+    if (success)
+      res.send({ status: 'Success', message: 'Saved successfully', data: null })
+    else
+      res.send({ status: 'Fail', message: 'Saved Failed', data: null })
+  }
+  catch (error) {
+    console.error(error)
+    res.send({ status: 'Fail', message: 'Update error', data: null })
+  }
+})
+
+router.post('/room-think-enabled', auth, async (req, res) => {
+  try {
+    const userId = req.headers.userId as string
+    const { thinkEnabled, roomId } = req.body as { thinkEnabled: boolean, roomId: number }
+    const success = await updateRoomThinkEnabled(userId, roomId, thinkEnabled)
     if (success)
       res.send({ status: 'Success', message: 'Saved successfully', data: null })
     else
@@ -156,7 +174,7 @@ router.post('/room-search-enabled', auth, async (req, res) => {
 router.post('/room-context', auth, async (req, res) => {
   try {
     const userId = req.headers.userId as string
-    const { using, roomId } = req.body as { using: boolean; roomId: number }
+    const { using, roomId } = req.body as { using: boolean, roomId: number }
     const success = await updateRoomUsingContext(userId, roomId, using)
     if (success)
       res.send({ status: 'Success', message: 'Saved successfully', data: null })
