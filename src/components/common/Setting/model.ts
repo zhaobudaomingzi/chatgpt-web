@@ -16,6 +16,7 @@ export class ConfigState {
 
 export class UserConfig {
   chatModel?: string
+  maxContextCount?: number
 }
 
 // https://platform.openai.com/docs/models/overview
@@ -114,15 +115,16 @@ export class UserPrompt {
   _id?: string
   title: string
   value: string
+  type?: 'built-in' | 'user-defined'
   constructor(title: string, value: string) {
     this.title = title
     this.value = value
   }
 }
 
-export type APIMODEL = 'ChatGPTAPI' | 'VLLM'
+export type APIMODEL = 'ChatGPTAPI' | 'VLLM' | 'FastDeploy'
 
-export const apiModelOptions = ['ChatGPTAPI', 'VLLM'].map((model: string) => {
+export const apiModelOptions = ['ChatGPTAPI', 'VLLM', 'FastDeploy'].map((model: string) => {
   return {
     label: model,
     key: model,
@@ -183,6 +185,8 @@ export type SearchServiceProvider = 'tavily' | ''
 
 export interface SearchServiceOptions {
   apiKey: string
+  maxResults?: number
+  includeRawContent?: boolean
 }
 
 export class SearchConfig {
@@ -197,5 +201,8 @@ export class SearchConfig {
     this.options = options
     this.systemMessageWithSearchResult = systemMessageWithSearchResult
     this.systemMessageGetSearchQuery = systemMessageGetSearchQuery
+    if (!this.options.maxResults) {
+      this.options.maxResults = 10
+    }
   }
 }

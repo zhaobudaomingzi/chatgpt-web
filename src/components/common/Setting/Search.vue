@@ -1,8 +1,9 @@
 <script setup lang='ts'>
 import type { ConfigState, SearchServiceProvider } from './model'
 import { fetchChatConfig, fetchTestSearch, fetchUpdateSearch } from '@/api'
-import { t } from '@/locales'
 import { SearchConfig } from './model'
+
+const { t } = useI18n()
 
 const ms = useMessage()
 
@@ -25,6 +26,10 @@ async function fetchConfig() {
       data.searchConfig = new SearchConfig(false, '', { apiKey: '' }, '', '')
     if (!data.searchConfig.options)
       data.searchConfig.options = { apiKey: '' }
+    if (!data.searchConfig.options.maxResults)
+      data.searchConfig.options.maxResults = 10
+    if (data.searchConfig.options.includeRawContent === undefined)
+      data.searchConfig.options.includeRawContent = false
     config.value = data.searchConfig
   }
   finally {
@@ -67,7 +72,7 @@ onMounted(() => {
     <div class="p-4 space-y-5 min-h-[200px]">
       <div class="space-y-6">
         <div class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.searchEnabled') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchEnabled') }}</span>
           <div class="flex-1">
             <NSwitch
               :round="false" :value="config && config.enabled"
@@ -76,7 +81,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="config && config.enabled" class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.searchProvider') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchProvider') }}</span>
           <div class="flex-1">
             <NSelect
               style="width: 140px"
@@ -87,7 +92,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="config && config.enabled" class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.searchApiKey') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchApiKey') }}</span>
           <div class="flex-1">
             <NInput
               v-model:value="config.options.apiKey"
@@ -97,7 +102,28 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="config && config.enabled" class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.searchTest') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchMaxResults') }}</span>
+          <div class="flex-1">
+            <NInputNumber
+              v-model:value="config.options.maxResults"
+              :min="1"
+              :max="20"
+              placeholder="1-20"
+              style="width: 140px"
+            />
+          </div>
+        </div>
+        <div v-if="config && config.enabled" class="flex items-center space-x-4">
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchIncludeRawContent') }}</span>
+          <div class="flex-1">
+            <NSwitch
+              :round="false" :value="config && config.options.includeRawContent"
+              @update:value="(val) => { if (config && config.options) config.options.includeRawContent = val }"
+            />
+          </div>
+        </div>
+        <div v-if="config && config.enabled" class="flex items-center space-x-4">
+          <span class="shrink-0 w-[100px]">{{ t('setting.searchTest') }}</span>
           <div class="flex-1">
             <NInput
               v-model:value="testText"
@@ -106,13 +132,13 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="config && config.enabled" class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.systemMessageWithSearchResult') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.systemMessageWithSearchResult') }}</span>
           <div class="flex-1">
             <NInput v-model:value="config.systemMessageWithSearchResult" type="textarea" :autosize="{ minRows: 2 }" :placeholder="t('setting.systemMessageWithSearchResultPlaceholder')" />
           </div>
         </div>
         <div v-if="config && config.enabled" class="flex items-center space-x-4">
-          <span class="shrink-0 w-[100px]">{{ $t('setting.systemMessageGetSearchQuery') }}</span>
+          <span class="shrink-0 w-[100px]">{{ t('setting.systemMessageGetSearchQuery') }}</span>
           <div class="flex-1">
             <NInput v-model:value="config.systemMessageGetSearchQuery" type="textarea" :autosize="{ minRows: 2 }" :placeholder="t('setting.systemMessageGetSearchQueryPlaceholder')" />
           </div>
@@ -121,10 +147,10 @@ onMounted(() => {
           <span class="shrink-0 w-[100px]" />
           <div class="flex flex-wrap items-center gap-4">
             <NButton :loading="saving" type="primary" @click="updateSearchInfo()">
-              {{ $t('common.save') }}
+              {{ t('common.save') }}
             </NButton>
             <NButton :loading="testing" type="info" @click="testSearch()">
-              {{ $t('common.test') }}
+              {{ t('common.test') }}
             </NButton>
           </div>
         </div>

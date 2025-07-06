@@ -1,5 +1,15 @@
 import type { WithId } from 'mongodb'
-import type { AdvancedConfig, ChatOptions, Config, GiftCard, KeyConfig, UsageResponse, UserPrompt } from './model'
+import type {
+  AdvancedConfig,
+  BuiltInPrompt,
+  ChatOptions,
+  Config,
+  GiftCard,
+  KeyConfig,
+  SearchResult,
+  UsageResponse,
+  UserPrompt,
+} from './model'
 import * as process from 'node:process'
 import dayjs from 'dayjs'
 import * as dotenv from 'dotenv'
@@ -30,6 +40,7 @@ const userCol = client.db(dbName).collection<UserInfo>('user')
 const configCol = client.db(dbName).collection<Config>('config')
 const usageCol = client.db(dbName).collection<ChatUsage>('chat_usage')
 const keyCol = client.db(dbName).collection<KeyConfig>('key_config')
+const builtInPromptCol = client.db(dbName).collection<BuiltInPrompt>('built_in_prompt')
 const userPromptCol = client.db(dbName).collection<UserPrompt>('user_prompt')
 // 新增兑换券的数据库
 // {
@@ -125,11 +136,12 @@ export async function updateChatSearchQuery(chatId: string, searchQuery: string)
   return result.modifiedCount > 0
 }
 
-export async function updateChatSearchResult(chatId: string, searchResult: string) {
+export async function updateChatSearchResult(chatId: string, searchResults: SearchResult[], searchUsageTime: number) {
   const query = { _id: new ObjectId(chatId) }
   const update = {
     $set: {
-      searchResult,
+      searchResults,
+      searchUsageTime,
     },
   }
   const result = await chatCol.updateOne(query, update)
@@ -142,8 +154,15 @@ export async function insertChatUsage(userId: ObjectId, roomId: number, chatId: 
   return chatUsage
 }
 
-export async function createChatRoom(userId: string, title: string, roomId: number, chatModel: string) {
-  const room = new ChatRoom(userId, title, roomId, chatModel, true, false)
+export async function createChatRoom(userId: string, title: string, roomId: number, chatModel: string, maxContextCount: number) {
+  const config = await getCacheConfig()
+  if (!chatModel) {
+    chatModel = config?.siteConfig?.chatModels.split(',')[0]
+  }
+  if (maxContextCount === undefined) {
+    maxContextCount = 10
+  }
+  const room = new ChatRoom(userId, title, roomId, chatModel, true, maxContextCount, true, false)
   await roomCol.insertOne(room)
   return room
 }
@@ -214,6 +233,17 @@ export async function updateRoomThinkEnabled(userId: string, roomId: number, thi
   const update = {
     $set: {
       thinkEnabled,
+    },
+  }
+  const result = await roomCol.updateOne(query, update)
+  return result.modifiedCount > 0
+}
+
+export async function updateRoomMaxContextCount(userId: string, roomId: number, maxContextCount: number) {
+  const query = { userId, roomId }
+  const update = {
+    $set: {
+      maxContextCount,
     },
   }
   const result = await roomCol.updateOne(query, update)
@@ -422,6 +452,7 @@ export async function createUser(email: string, password: string, roles?: UserRo
   // Use the first item from the globally available chatModel configuration as the default model for new users
   userInfo.config = new UserConfig()
   userInfo.config.chatModel = config?.siteConfig?.chatModels.split(',')[0]
+  userInfo.config.maxContextCount = 10
 
   await userCol.insertOne(userInfo)
   return userInfo
@@ -438,6 +469,10 @@ export async function updateUserAmount(userId: string, amt: number) {
 
 export async function updateUserChatModel(userId: string, chatModel: string) {
   await userCol.updateOne({ _id: new ObjectId(userId) }, { $set: { 'config.chatModel': chatModel } })
+}
+
+export async function updateUserMaxContextCount(userId: string, maxContextCount: number) {
+  await userCol.updateOne({ _id: new ObjectId(userId) }, { $set: { 'config.maxContextCount': maxContextCount } })
 }
 
 export async function updateUserAdvancedConfig(userId: string, config: AdvancedConfig) {
@@ -629,6 +664,13 @@ export async function upsertKey(key: KeyConfig): Promise<KeyConfig> {
 
 export async function updateApiKeyStatus(id: string, status: Status) {
   await keyCol.updateOne({ _id: new ObjectId(id) }, { $set: { status } })
+}
+
+export async function getBuiltInPromptList(): Promise<{ data: BuiltInPrompt[], total: number }> {
+  const total = await builtInPromptCol.countDocuments()
+  const cursor = builtInPromptCol.find().sort({ _id: -1 })
+  const data = await cursor.toArray()
+  return { data, total }
 }
 
 export async function upsertUserPrompt(userPrompt: UserPrompt): Promise<UserPrompt> {

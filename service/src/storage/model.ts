@@ -71,6 +71,7 @@ export class UserInfo {
 
 export class UserConfig {
   chatModel: string
+  maxContextCount: number
 }
 
 export class ChatRoom {
@@ -80,16 +81,18 @@ export class ChatRoom {
   title: string
   prompt: string
   usingContext: boolean
+  maxContextCount: number
   status: Status = Status.Normal
   chatModel: string
   searchEnabled: boolean
   thinkEnabled: boolean
-  constructor(userId: string, title: string, roomId: number, chatModel: string, searchEnabled: boolean, thinkEnabled: boolean) {
+  constructor(userId: string, title: string, roomId: number, chatModel: string, usingContext: boolean, maxContextCount: number, searchEnabled: boolean, thinkEnabled: boolean) {
     this.userId = userId
     this.title = title
     this.prompt = undefined
     this.roomId = roomId
-    this.usingContext = true
+    this.usingContext = usingContext
+    this.maxContextCount = maxContextCount
     this.chatModel = chatModel
     this.searchEnabled = searchEnabled
     this.thinkEnabled = thinkEnabled
@@ -114,6 +117,12 @@ export class previousResponse {
   options: ChatOptions
 }
 
+export class SearchResult {
+  title: string
+  url: string
+  content: string
+}
+
 export class ChatInfo {
   _id: ObjectId
   roomId: number
@@ -123,7 +132,8 @@ export class ChatInfo {
   prompt: string
   images?: string[]
   searchQuery?: string
-  searchResult?: string
+  searchResults?: SearchResult[]
+  searchUsageTime?: number
   reasoning?: string
   response?: string
   status: Status = Status.Normal
@@ -189,6 +199,8 @@ export enum SearchServiceProvider {
 
 export class SearchServiceOptions {
   public apiKey: string
+  public maxResults?: number
+  public includeRawContent?: boolean
 }
 
 export class Config {
@@ -263,7 +275,6 @@ export class AdvancedConfig {
     public systemMessage: string,
     public temperature: number,
     public top_p: number,
-    public maxContextCount: number,
   ) { }
 }
 
@@ -293,6 +304,16 @@ export class KeyConfig {
   }
 }
 
+export class BuiltInPrompt {
+  _id: ObjectId
+  title: string
+  value: string
+  constructor(title: string, value: string) {
+    this.title = title
+    this.value = value
+  }
+}
+
 export class UserPrompt {
   _id: ObjectId
   userId: string
@@ -305,4 +326,4 @@ export class UserPrompt {
   }
 }
 
-export type APIMODEL = 'ChatGPTAPI' | 'VLLM'
+export type APIMODEL = 'ChatGPTAPI' | 'VLLM' | 'FastDeploy'

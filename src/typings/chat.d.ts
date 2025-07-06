@@ -1,7 +1,16 @@
 declare namespace Chat {
+  interface SearchResult {
+    title: string
+    url: string
+    content: string
+  }
+
   interface Chat {
     uuid?: number
     dateTime: string
+    searchQuery?: string
+    searchResults?: SearchResult[]
+    searchUsageTime?: number
     reasoning?: string
     finish_reason?: string
     text: string
@@ -20,24 +29,18 @@ declare namespace Chat {
     }
   }
 
-  interface History {
+  interface ChatRoom {
     title: string
     isEdit: boolean
-    uuid: number
+    roomId: number
     loading?: boolean
     all?: boolean
     prompt?: string
     usingContext: boolean
-    chatModel?: string
-    searchEnabled?: boolean
-    thinkEnabled?: boolean
-  }
-
-  interface ChatState {
-    active: number | null
-    usingContext: boolean
-    history: History[]
-    chat: { uuid: number, data: Chat[] }[]
+    maxContextCount: number
+    chatModel: string
+    searchEnabled: boolean
+    thinkEnabled: boolean
   }
 
   interface ConversationRequest {

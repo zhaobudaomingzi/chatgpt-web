@@ -82,7 +82,6 @@ export async function getOriginConfig() {
       'You are a large language model. Follow the user\'s instructions carefully. Respond using markdown (latex start with $).',
       0.8,
       1,
-      20,
     )
   }
 
@@ -96,6 +95,7 @@ export async function getOriginConfig() {
   if (!config.searchConfig) {
     config.searchConfig = new SearchConfig()
     config.searchConfig.enabled = false
+    config.searchConfig.options = { apiKey: '', maxResults: 10, includeRawContent: false }
   }
 
   if (!isNotEmptyString(config.siteConfig.chatModels))

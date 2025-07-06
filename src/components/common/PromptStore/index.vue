@@ -4,17 +4,21 @@ import { NButton } from 'naive-ui'
 import { fetchClearUserPrompt, fetchDeleteUserPrompt, fetchImportUserPrompt, fetchUpsertUserPrompt, fetchUserPromptList } from '@/api'
 import { UserPrompt } from '@/components/common/Setting/model'
 import { useBasicLayout } from '@/hooks/useBasicLayout'
-import { t } from '@/locales'
 import { useAuthStoreWithout, usePromptStore } from '@/store'
 import { SvgIcon } from '..'
 import PromptRecommend from '../../../assets/recommend.json'
 
+const props = defineProps<Props>()
+
+const emit = defineEmits<Emit>()
+
+const { t } = useI18n()
+
 interface DataProps {
   _id?: string
-  renderKey: string
-  renderValue: string
   title: string
   value: string
+  type: 'built-in' | 'user-defined'
 }
 
 interface Props {
@@ -24,10 +28,6 @@ interface Props {
 interface Emit {
   (e: 'update:visible', visible: boolean): void
 }
-
-const props = defineProps<Props>()
-
-const emit = defineEmits<Emit>()
 
 const message = useMessage()
 
@@ -275,14 +275,12 @@ async function downloadPromptTemplate() {
 
 // 移动端自适应相关
 function renderTemplate() {
-  const [keyLimit, valueLimit] = isMobile.value ? [10, 30] : [15, 50]
   return promptList.value.map((item: UserPrompt) => {
     return {
-      renderKey: item.title.length <= keyLimit ? item.title : `${item.title.substring(0, keyLimit)}...`,
-      renderValue: item.value.length <= valueLimit ? item.value : `${item.value.substring(0, valueLimit)}...`,
       title: item.title,
       value: item.value,
       _id: item._id,
+      type: item.type,
     }
   })
 }
@@ -299,12 +297,28 @@ const pagination = computed(() => {
 function createColumns(): DataTableColumns<DataProps> {
   return [
     {
+      title: 'type',
+      key: 'type',
+      width: 100,
+      align: 'center',
+      render: (row: DataProps) => row.type === 'built-in' ? t('store.builtIn') : t('store.userDefined'),
+    },
+    {
       title: t('store.title'),
-      key: 'renderKey',
+      key: 'title',
+      width: 200,
     },
     {
       title: t('store.description'),
-      key: 'renderValue',
+      key: 'value',
+      ellipsis: {
+        lineClamp: 6,
+        tooltip: {
+          contentClass: 'whitespace-pre-line text-xs max-h-100 max-w-200',
+          scrollable: true,
+        },
+      },
+      className: 'whitespace-pre-line',
     },
     {
       title: t('common.action'),
@@ -312,6 +326,9 @@ function createColumns(): DataTableColumns<DataProps> {
       width: 100,
       align: 'center',
       render(row) {
+        if (row.type === 'built-in') {
+          return ''
+        }
         return h('div', { class: 'flex items-center flex-col gap-2' }, {
           default: () => [h(
             NButton,
@@ -349,12 +366,10 @@ watch(
 )
 
 onMounted(async () => {
-  if (!!authStore.session?.auth && !authStore.token)
+  if (!authStore.session?.auth)
     return
-  if (promptStore.getPromptList().promptList.length === 0) {
-    await handleGetUserPromptList()
-    promptStore.updatePromptList(promptList.value)
-  }
+  await handleGetUserPromptList()
+  promptStore.updatePromptList(promptList.value)
 })
 
 const dataSource = computed(() => {
@@ -362,7 +377,7 @@ const dataSource = computed(() => {
   const value = searchValue.value
   if (value && value !== '') {
     return data.filter((item: DataProps) => {
-      return item.renderKey.includes(value) || item.renderValue.includes(value)
+      return item.title.includes(value) || item.value.includes(value)
     })
   }
   return data
@@ -385,7 +400,7 @@ async function handleGetUserPromptList() {
   <NModal v-model:show="show" style="width: 90%; max-width: 900px;" preset="card">
     <div class="space-y-4">
       <NTabs type="segment">
-        <NTabPane name="local" :tab="$t('store.local')">
+        <NTabPane name="local" :tab="t('store.local')">
           <div
             class="flex gap-3 mb-4"
             :class="[isMobile ? 'flex-col' : 'flex-row justify-between']"
@@ -396,28 +411,28 @@ async function handleGetUserPromptList() {
                 size="small"
                 @click="changeShowModal('add')"
               >
-                {{ $t('common.add') }}
+                {{ t('common.add') }}
               </NButton>
               <NButton
                 size="small"
                 @click="changeShowModal('local_import')"
               >
-                {{ $t('common.import') }}
+                {{ t('common.import') }}
               </NButton>
               <NButton
                 size="small"
                 :loading="exportLoading"
                 @click="exportPromptTemplate()"
               >
-                {{ $t('common.export') }}
+                {{ t('common.export') }}
               </NButton>
               <NPopconfirm @positive-click="clearPromptTemplate">
                 <template #trigger>
                   <NButton size="small">
-                    {{ $t('common.clear') }}
+                    {{ t('common.clear') }}
                   </NButton>
                 </template>
-                {{ $t('store.clearStoreConfirm') }}
+                {{ t('store.clearStoreConfirm') }}
               </NPopconfirm>
             </div>
             <div class="flex items-center">
@@ -436,9 +451,19 @@ async function handleGetUserPromptList() {
           />
           <NList v-if="isMobile" style="max-height: 400px; overflow-y: auto;">
             <NListItem v-for="(item, index) of dataSource" :key="index">
-              <NThing :title="item.renderKey" :description="item.renderValue" />
+              <NThing :title="item.title" :description="item.value" description-class="text-xs">
+                <template #description>
+                  <NEllipsis
+                    class="max-w-240 whitespace-pre-line"
+                    :tooltip="{ contentClass: 'whitespace-pre-line text-xs max-h-100 max-w-90', scrollable: true }"
+                    :line-clamp="3"
+                  >
+                    {{ item.value }}
+                  </NEllipsis>
+                </template>
+              </NThing>>
               <template #suffix>
-                <div class="flex flex-col items-center gap-2">
+                <div v-if="item.type !== 'built-in'" class="flex flex-col items-center gap-2">
                   <NButton tertiary size="small" type="info" @click="changeShowModal('modify', item)">
                     {{ t('common.edit') }}
                   </NButton>
@@ -450,9 +475,9 @@ async function handleGetUserPromptList() {
             </NListItem>
           </NList>
         </NTabPane>
-        <NTabPane name="download" :tab="$t('store.online')">
+        <NTabPane name="download" :tab="t('store.online')">
           <p class="mb-4">
-            {{ $t('store.onlineImportWarning') }}
+            {{ t('store.onlineImportWarning') }}
           </p>
           <div class="flex items-center gap-4">
             <NInput v-model:value="downloadURL" placeholder="" />
@@ -463,7 +488,7 @@ async function handleGetUserPromptList() {
               :loading="importLoading"
               @click="downloadPromptTemplate()"
             >
-              {{ $t('common.download') }}
+              {{ t('common.download') }}
             </NButton>
           </div>
           <NDivider />

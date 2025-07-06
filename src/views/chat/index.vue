@@ -6,10 +6,9 @@ import {
   fetchChatResponseoHistory,
   fetchChatStopResponding,
 } from '@/api'
-import { HoverButton, SvgIcon } from '@/components/common'
+import { HoverButton, PromptTypeTag, SvgIcon } from '@/components/common'
 import { useBasicLayout } from '@/hooks/useBasicLayout'
 import IconPrompt from '@/icons/Prompt.vue'
-import { t } from '@/locales'
 import { useAuthStore, useChatStore, usePromptStore, useUserStore } from '@/store'
 import { debounce } from '@/utils/functions/debounce'
 import { Message } from './components'
@@ -17,10 +16,11 @@ import HeaderComponent from './components/Header/index.vue'
 import { useChat } from './hooks/useChat'
 import { useScroll } from './hooks/useScroll'
 
+const { t } = useI18n()
+
 const Prompt = defineAsyncComponent(() => import('@/components/common/Setting/Prompt.vue'))
 
 let controller = new AbortController()
-let lastChatInfo: any = {}
 
 const openLongReply = import.meta.env.VITE_GLOB_OPEN_LONG_REPLY === 'true'
 
@@ -32,13 +32,12 @@ const userStore = useUserStore()
 const chatStore = useChatStore()
 
 const { isMobile } = useBasicLayout()
-const { addChat, updateChat, updateChatSome, getChatByUuidAndIndex } = useChat()
+const { updateChat, updateChatSome, getChatByUuidAndIndex } = useChat()
 const { scrollRef, scrollToBottom, scrollToBottomIfAtBottom, scrollTo } = useScroll()
 
 const { uuid } = route.params as { uuid: string }
 
-const currentChatHistory = computed(() => chatStore.getChatHistoryByCurrentActive)
-const usingContext = computed(() => currentChatHistory?.value?.usingContext ?? true)
+const currentChatRoom = computed(() => chatStore.getChatRoomByCurrentActive)
 const dataSources = computed(() => chatStore.getChatByUuid(+uuid))
 const conversationList = computed(() => dataSources.value.filter(item => (!item.inversion && !!item.conversationOptions)))
 
@@ -47,8 +46,8 @@ const firstLoading = ref<boolean>(false)
 const loading = ref<boolean>(false)
 const inputRef = ref<Ref | null>(null)
 const showPrompt = ref(false)
-const nowSelectChatModel = ref<string | null>(null)
-const currentChatModel = computed(() => nowSelectChatModel.value ?? currentChatHistory.value?.chatModel ?? userStore.userInfo.config.chatModel)
+
+const loadingChatUuid = ref<number>(-1)
 
 const currentNavIndexRef = ref<number>(-1)
 
@@ -84,17 +83,16 @@ async function onConversation() {
   if (!message || message.trim() === '')
     return
 
-  if (nowSelectChatModel.value && currentChatHistory.value)
-    currentChatHistory.value.chatModel = nowSelectChatModel.value
-
   const uploadFileKeys = uploadFileKeysRef.value
   uploadFileKeysRef.value = []
 
   controller = new AbortController()
 
   const chatUuid = Date.now()
-  addChat(
-    +uuid,
+  loadingChatUuid.value = chatUuid
+
+  await chatStore.addChatMessage(
+    currentChatRoom.value!.roomId,
     {
       uuid: chatUuid,
       dateTime: new Date().toLocaleString(),
@@ -106,7 +104,7 @@ async function onConversation() {
       requestOptions: { prompt: message, options: null },
     },
   )
-  scrollToBottom()
+  await scrollToBottom()
 
   loading.value = true
   prompt.value = ''
@@ -114,11 +112,11 @@ async function onConversation() {
   let options: Chat.ConversationRequest = {}
   const lastContext = conversationList.value[conversationList.value.length - 1]?.conversationOptions
 
-  if (lastContext && usingContext.value)
+  if (lastContext && currentChatRoom.value?.usingContext)
     options = { ...lastContext }
 
-  addChat(
-    +uuid,
+  await chatStore.addChatMessage(
+    currentChatRoom.value!.roomId,
     {
       uuid: chatUuid,
       dateTime: new Date().toLocaleString(),
@@ -130,19 +128,23 @@ async function onConversation() {
       requestOptions: { prompt: message, options: { ...options } },
     },
   )
-  scrollToBottom()
+  await scrollToBottom()
 
   try {
     let lastText = ''
     const fetchChatAPIOnce = async () => {
+      let searchQuery: string
+      let searchResults: Chat.SearchResult[]
+      let searchUsageTime: number
+
       await fetchChatAPIProcess<Chat.ConversationResponse>({
-        roomId: +uuid,
+        roomId: currentChatRoom.value!.roomId,
         uuid: chatUuid,
         prompt: message,
         uploadFileKeys,
         options,
         signal: controller.signal,
-        onDownloadProgress: ({ event }) => {
+        onDownloadProgress: async ({ event }) => {
           const xhr = event.target
           const { responseText } = xhr
           // Always process the final line
@@ -152,7 +154,13 @@ async function onConversation() {
             chunk = responseText.substring(lastIndex)
           try {
             const data = JSON.parse(chunk)
-            lastChatInfo = data
+            if (data.searchQuery)
+              searchQuery = data.searchQuery
+            if (data.searchResults)
+              searchResults = data.searchResults
+            if (data.searchUsageTime)
+              searchUsageTime = data.searchUsageTime
+
             const usage = (data.detail && data.detail.usage)
               ? {
                   completion_tokens: data.detail.usage.completion_tokens || null,
@@ -161,11 +169,14 @@ async function onConversation() {
                   estimated: data.detail.usage.estimated || null,
                 }
               : undefined
-            updateChat(
-              +uuid,
+            await chatStore.updateChatMessage(
+              currentChatRoom.value!.roomId,
               dataSources.value.length - 1,
               {
                 dateTime: new Date().toLocaleString(),
+                searchQuery,
+                searchResults,
+                searchUsageTime,
                 reasoning: data?.reasoning,
                 text: lastText + (data.text ?? ''),
                 inversion: false,
@@ -184,14 +195,14 @@ async function onConversation() {
               return fetchChatAPIOnce()
             }
 
-            scrollToBottomIfAtBottom()
+            await scrollToBottomIfAtBottom()
           }
           catch {
             //
           }
         },
       })
-      updateChatSome(+uuid, dataSources.value.length - 1, { loading: false })
+      updateChatSome(currentChatRoom.value!.roomId, dataSources.value.length - 1, { loading: false })
     }
 
     await fetchChatAPIOnce()
@@ -201,21 +212,21 @@ async function onConversation() {
 
     if (error.message === 'canceled') {
       updateChatSome(
-        +uuid,
+        currentChatRoom.value!.roomId,
         dataSources.value.length - 1,
         {
           loading: false,
         },
       )
-      scrollToBottomIfAtBottom()
+      await scrollToBottomIfAtBottom()
       return
     }
 
-    const currentChat = getChatByUuidAndIndex(+uuid, dataSources.value.length - 1)
+    const currentChat = getChatByUuidAndIndex(currentChatRoom.value!.roomId, dataSources.value.length - 1)
 
     if (currentChat?.text && currentChat.text !== '') {
       updateChatSome(
-        +uuid,
+        currentChatRoom.value!.roomId,
         dataSources.value.length - 1,
         {
           text: `${currentChat.text}\n[${errorMessage}]`,
@@ -227,7 +238,7 @@ async function onConversation() {
     }
 
     updateChat(
-      +uuid,
+      currentChatRoom.value!.roomId,
       dataSources.value.length - 1,
       {
         dateTime: new Date().toLocaleString(),
@@ -265,8 +276,9 @@ async function onRegenerate(index: number) {
 
   loading.value = true
   const chatUuid = dataSources.value[index].uuid
+  loadingChatUuid.value = chatUuid!
   updateChat(
-    +uuid,
+    currentChatRoom.value!.roomId,
     index,
     {
       dateTime: new Date().toLocaleString(),
@@ -284,7 +296,7 @@ async function onRegenerate(index: number) {
     let lastText = ''
     const fetchChatAPIOnce = async () => {
       await fetchChatAPIProcess<Chat.ConversationResponse>({
-        roomId: +uuid,
+        roomId: currentChatRoom.value!.roomId,
         uuid: chatUuid || Date.now(),
         regenerate: true,
         prompt: message,
@@ -300,7 +312,6 @@ async function onRegenerate(index: number) {
             chunk = responseText.substring(lastIndex)
           try {
             const data = JSON.parse(chunk)
-            lastChatInfo = data
             const usage = (data.detail && data.detail.usage)
               ? {
                   completion_tokens: data.detail.usage.completion_tokens || null,
@@ -310,7 +321,7 @@ async function onRegenerate(index: number) {
                 }
               : undefined
             updateChat(
-              +uuid,
+              currentChatRoom.value!.roomId,
               index,
               {
                 dateTime: new Date().toLocaleString(),
@@ -339,14 +350,14 @@ async function onRegenerate(index: number) {
           }
         },
       })
-      updateChatSome(+uuid, index, { loading: false })
+      updateChatSome(currentChatRoom.value!.roomId, index, { loading: false })
     }
     await fetchChatAPIOnce()
   }
   catch (error: any) {
     if (error.message === 'canceled') {
       updateChatSome(
-        +uuid,
+        currentChatRoom.value!.roomId,
         index,
         {
           loading: false,
@@ -358,7 +369,7 @@ async function onRegenerate(index: number) {
     const errorMessage = error?.message ?? t('common.wrong')
 
     updateChat(
-      +uuid,
+      currentChatRoom.value!.roomId,
       index,
       {
         dateTime: new Date().toLocaleString(),
@@ -378,9 +389,9 @@ async function onRegenerate(index: number) {
 }
 
 async function onResponseHistory(index: number, historyIndex: number) {
-  const chat = (await fetchChatResponseoHistory(+uuid, dataSources.value[index].uuid || Date.now(), historyIndex)).data
+  const chat = (await fetchChatResponseoHistory(currentChatRoom.value!.roomId, dataSources.value[index].uuid || Date.now(), historyIndex)).data
   updateChat(
-    +uuid,
+    currentChatRoom.value!.roomId,
     index,
     {
       dateTime: chat.dateTime,
@@ -444,7 +455,7 @@ function handleDelete(index: number, fast: boolean) {
     return
 
   if (fast === true) {
-    chatStore.deleteChatByUuid(+uuid, index)
+    chatStore.deleteChatByUuid(currentChatRoom.value!.roomId, index)
   }
   else {
     dialog.warning({
@@ -453,7 +464,7 @@ function handleDelete(index: number, fast: boolean) {
       positiveText: t('common.yes'),
       negativeText: t('common.no'),
       onPositiveClick: () => {
-        chatStore.deleteChatByUuid(+uuid, index)
+        chatStore.deleteChatByUuid(currentChatRoom.value!.roomId, index)
       },
     })
   }
@@ -473,7 +484,7 @@ function handleClear() {
     positiveText: t('common.yes'),
     negativeText: t('common.no'),
     onPositiveClick: () => {
-      chatStore.clearChatByUuid(+uuid)
+      chatStore.clearChatByUuid(currentChatRoom.value!.roomId)
     },
   })
 }
@@ -497,19 +508,19 @@ async function handleStop() {
   if (loading.value) {
     controller.abort()
     loading.value = false
-    await fetchChatStopResponding(lastChatInfo.text, lastChatInfo.id, lastChatInfo.conversationId)
+    await fetchChatStopResponding(loadingChatUuid.value)
   }
 }
 
 async function loadMoreMessage(event: any) {
-  const chatIndex = chatStore.chat.findIndex(d => d.uuid === +uuid)
+  const chatIndex = chatStore.chat.findIndex(d => d.roomId === currentChatRoom.value!.roomId)
   if (chatIndex <= -1 || chatStore.chat[chatIndex].data.length <= 0)
     return
 
   const scrollPosition = event.target.scrollHeight - event.target.scrollTop
 
   const lastId = chatStore.chat[chatIndex].data[0].uuid
-  await chatStore.syncChat({ uuid: +uuid } as Chat.History, lastId, () => {
+  await chatStore.syncChat({ roomId: currentChatRoom.value!.roomId } as Chat.ChatRoom, lastId, () => {
     loadingms && loadingms.destroy()
     nextTick(() => scrollTo(event.target.scrollHeight - scrollPosition))
   }, () => {
@@ -531,7 +542,7 @@ const handleLoadMoreMessage = debounce(loadMoreMessage, 300)
 const handleSyncChat
   = debounce(() => {
     // 直接刷 极小概率不请求
-    chatStore.syncChat({ uuid: Number(uuid) } as Chat.History, undefined, () => {
+    chatStore.syncChat({ roomId: Number(uuid) } as Chat.ChatRoom, undefined, () => {
       firstLoading.value = false
       const scrollRef = document.querySelector('#scrollRef')
       if (scrollRef)
@@ -549,38 +560,33 @@ async function handleScroll(event: any) {
 }
 
 async function handleToggleSearchEnabled() {
-  if (!currentChatHistory.value)
+  if (!currentChatRoom.value)
     return
 
-  const searchEnabled = currentChatHistory.value.searchEnabled ?? false
-  currentChatHistory.value.searchEnabled = !searchEnabled
-  await chatStore.setChatSearchEnabled(!searchEnabled, +uuid)
-  if (currentChatHistory.value.searchEnabled)
+  await chatStore.setChatSearchEnabled(!currentChatRoom.value.searchEnabled)
+  if (currentChatRoom.value.searchEnabled)
     ms.success(t('chat.turnOnSearch'))
   else
     ms.warning(t('chat.turnOffSearch'))
 }
 
 async function handleToggleThinkEnabled() {
-  if (!currentChatHistory.value)
+  if (!currentChatRoom.value)
     return
 
-  const thinkEnabled = currentChatHistory.value.thinkEnabled ?? false
-  currentChatHistory.value.thinkEnabled = !thinkEnabled
-  await chatStore.setChatThinkEnabled(!thinkEnabled, +uuid)
-  if (currentChatHistory.value.thinkEnabled)
+  await chatStore.setChatThinkEnabled(!currentChatRoom.value.thinkEnabled)
+  if (currentChatRoom.value.thinkEnabled)
     ms.success(t('chat.turnOnThink'))
   else
     ms.warning(t('chat.turnOffThink'))
 }
 
 async function handleToggleUsingContext() {
-  if (!currentChatHistory.value)
+  if (!currentChatRoom.value)
     return
 
-  currentChatHistory.value.usingContext = !currentChatHistory.value.usingContext
-  chatStore.setUsingContext(currentChatHistory.value.usingContext, +uuid)
-  if (currentChatHistory.value.usingContext)
+  await chatStore.setUsingContext(!currentChatRoom.value.usingContext)
+  if (currentChatRoom.value.usingContext)
     ms.success(t('chat.turnOnContext'))
   else
     ms.warning(t('chat.turnOffContext'))
@@ -606,8 +612,13 @@ const searchOptions = computed(() => {
 // value反渲染key
 function renderOption(option: { label: string }) {
   for (const i of promptTemplate.value) {
-    if (i.value === option.label)
-      return [i.title]
+    if (i.value === option.label) {
+      return [
+        h(PromptTypeTag, { type: i.type }),
+        h('span', { style: { marginLeft: '8px' } }),
+        i.title,
+      ]
+    }
   }
   return []
 }
@@ -630,12 +641,20 @@ const footerClass = computed(() => {
 })
 
 async function handleSyncChatModel(chatModel: string) {
-  nowSelectChatModel.value = chatModel
-  await chatStore.setChatModel(chatModel, +uuid)
+  await chatStore.setChatModel(chatModel)
 }
 
-function formatTooltip(value: number) {
-  return `${t('setting.maxContextCount')}: ${value}`
+function handleUpdateMaxContextCount(maxContextCount: number) {
+  if (currentChatRoom.value) {
+    currentChatRoom.value.maxContextCount = maxContextCount
+  }
+}
+
+async function handleSyncMaxContextCount() {
+  if (!currentChatRoom.value)
+    return
+
+  await chatStore.setMaxContextCount(currentChatRoom.value.maxContextCount)
 }
 
 // https://github.com/tusen-ai/naive-ui/issues/4887
@@ -682,10 +701,10 @@ onUnmounted(() => {
   <div class="flex flex-col w-full h-full">
     <HeaderComponent
       v-if="isMobile"
-      :using-context="usingContext"
+      :using-context="currentChatRoom?.usingContext"
       :show-prompt="showPrompt"
-      :search-enabled="currentChatHistory?.searchEnabled"
-      :think-enabled="currentChatHistory?.thinkEnabled"
+      :search-enabled="currentChatRoom?.searchEnabled"
+      :think-enabled="currentChatRoom?.thinkEnabled"
       @export="handleExport"
       @toggle-using-context="handleToggleUsingContext"
       @toggle-search-enabled="handleToggleSearchEnabled"
@@ -714,6 +733,9 @@ onUnmounted(() => {
                   :index="index"
                   :current-nav-index="currentNavIndexRef"
                   :date-time="item.dateTime"
+                  :search-query="item?.searchQuery"
+                  :search-results="item?.searchResults"
+                  :search-usage-time="item?.searchUsageTime"
                   :reasoning="item?.reasoning"
                   :finish-reason="item?.finish_reason"
                   :text="item.text"
@@ -792,48 +814,58 @@ onUnmounted(() => {
             </HoverButton>
             <NSelect
               style="width: 250px"
-              :value="currentChatModel"
+              :value="currentChatRoom?.chatModel"
               :options="authStore.session?.chatModels"
               :disabled="!!authStore.session?.auth && !authStore.token && !authStore.session?.authProxyEnabled"
-              @update-value="(val) => handleSyncChatModel(val)"
+              @update:value="handleSyncChatModel"
             />
             <HoverButton
               v-if="!isMobile"
-              :tooltip="currentChatHistory?.searchEnabled ? $t('chat.clickTurnOffSearch') : $t('chat.clickTurnOnSearch')"
-              :tooltip-help="$t('chat.searchHelp')"
-              :class="{ 'text-[#4b9e5f]': currentChatHistory?.searchEnabled, 'text-[#a8071a]': !currentChatHistory?.searchEnabled }"
+              :tooltip="currentChatRoom?.searchEnabled ? t('chat.clickTurnOffSearch') : t('chat.clickTurnOnSearch')"
+              :tooltip-help="t('chat.searchHelp')"
+              :class="{ 'text-[#4b9e5f]': currentChatRoom?.searchEnabled, 'text-[#a8071a]': !currentChatRoom?.searchEnabled }"
               @click="handleToggleSearchEnabled"
             >
               <span class="text-xl flex items-center">
                 <SvgIcon icon="mdi:web" />
-                <span class="ml-1 text-sm">{{ currentChatHistory?.searchEnabled ? $t('chat.searchEnabled') : $t('chat.searchDisabled') }}</span>
+                <span class="ml-1 text-sm">{{ currentChatRoom?.searchEnabled ? t('chat.searchEnabled') : t('chat.searchDisabled') }}</span>
               </span>
             </HoverButton>
             <HoverButton
               v-if="!isMobile"
-              :tooltip="currentChatHistory?.thinkEnabled ? $t('chat.clickTurnOffThink') : $t('chat.clickTurnOnThink')"
-              :tooltip-help="$t('chat.thinkHelp')"
-              :class="{ 'text-[#4b9e5f]': currentChatHistory?.thinkEnabled, 'text-[#a8071a]': !currentChatHistory?.thinkEnabled }"
+              :tooltip="currentChatRoom?.thinkEnabled ? t('chat.clickTurnOffThink') : t('chat.clickTurnOnThink')"
+              :tooltip-help="t('chat.thinkHelp')"
+              :class="{ 'text-[#4b9e5f]': currentChatRoom?.thinkEnabled, 'text-[#a8071a]': !currentChatRoom?.thinkEnabled }"
               @click="handleToggleThinkEnabled"
             >
               <span class="text-xl flex items-center">
                 <SvgIcon icon="mdi:lightbulb-outline" />
-                <span class="ml-1 text-sm">{{ currentChatHistory?.thinkEnabled ? $t('chat.thinkEnabled') : $t('chat.thinkDisabled') }}</span>
+                <span class="ml-1 text-sm">{{ currentChatRoom?.thinkEnabled ? t('chat.thinkEnabled') : t('chat.thinkDisabled') }}</span>
               </span>
             </HoverButton>
             <HoverButton
               v-if="!isMobile"
-              :tooltip="usingContext ? $t('chat.clickTurnOffContext') : $t('chat.clickTurnOnContext')"
-              :tooltip-help="$t('chat.contextHelp')"
-              :class="{ 'text-[#4b9e5f]': usingContext, 'text-[#a8071a]': !usingContext }"
+              :tooltip="currentChatRoom?.usingContext ? t('chat.clickTurnOffContext') : t('chat.clickTurnOnContext')"
+              :tooltip-help="t('chat.contextHelp')"
+              :class="{ 'text-[#4b9e5f]': currentChatRoom?.usingContext, 'text-[#a8071a]': !currentChatRoom?.usingContext }"
               @click="handleToggleUsingContext"
             >
               <span class="text-xl flex items-center">
                 <SvgIcon icon="ri:chat-history-line" />
-                <span class="ml-1 text-sm">{{ usingContext ? $t('chat.showOnContext') : $t('chat.showOffContext') }}</span>
+                <span class="ml-1 text-sm">{{ currentChatRoom?.usingContext ? t('chat.showOnContext') : t('chat.showOffContext') }}</span>
               </span>
             </HoverButton>
-            <NSlider v-model:value="userStore.userInfo.advanced.maxContextCount" :disabled="!usingContext" :max="40" :min="0" :step="1" style="width: 88px" :format-tooltip="formatTooltip" @update:value="() => { userStore.updateSetting(false) }" />
+            <NSlider
+              :value="currentChatRoom?.maxContextCount"
+              :disabled="!currentChatRoom?.usingContext"
+              :max="40"
+              :min="0"
+              :step="1"
+              style="width: 180px"
+              :format-tooltip="(value: number) => `${t('chat.maxContextCount')}: ${value}`"
+              :on-dragend="handleSyncMaxContextCount"
+              @update:value="handleUpdateMaxContextCount"
+            />
           </div>
           <div class="flex items-center justify-between space-x-2">
             <NAutoComplete v-model:value="prompt" :options="searchOptions" :render-label="renderOption">
@@ -844,7 +876,7 @@ onUnmounted(() => {
                   :disabled="!!authStore.session?.auth && !authStore.token && !authStore.session?.authProxyEnabled"
                   type="textarea"
                   :placeholder="placeholder"
-                  :autosize="{ minRows: isMobile ? 1 : 4, maxRows: isMobile ? 4 : 8 }"
+                  :autosize="{ minRows: isMobile ? 1 : 2, maxRows: isMobile ? 4 : 12 }"
                   @input="handleInput"
                   @focus="handleFocus"
                   @blur="handleBlur"

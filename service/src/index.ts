@@ -1,4 +1,4 @@
-import type { AnnounceConfig, AuditConfig, Config, GiftCard, KeyConfig, MailConfig, SiteConfig, UserConfig, UserInfo } from './storage/model'
+import type { AnnounceConfig, AuditConfig, Config, GiftCard, KeyConfig, MailConfig, SearchResult, SiteConfig, UserInfo } from './storage/model'
 import type { AuthJwtPayload } from './types'
 import * as path from 'node:path'
 import * as process from 'node:process'
@@ -16,7 +16,7 @@ import { router as promptRouter } from './routes/prompt'
 import { router as roomRouter } from './routes/room'
 import { router as uploadRouter } from './routes/upload'
 import { clearApiKeyCache, clearConfigCache, getApiKeys, getCacheApiKeys, getCacheConfig, getOriginConfig } from './storage/config'
-import { AdvancedConfig, Status, UserRole } from './storage/model'
+import { AdvancedConfig, Status, UserConfig, UserRole } from './storage/model'
 import {
   createUser,
   disableUser2FA,
@@ -35,6 +35,7 @@ import {
   updateUserAmount,
   updateUserChatModel,
   updateUserInfo,
+  updateUserMaxContextCount,
   updateUserPassword,
   updateUserPasswordWithVerifyOld,
   updateUserStatus,
@@ -181,6 +182,16 @@ router.post('/session', async (req, res) => {
           },
         })
         return
+      }
+
+      if (!user?.config) {
+        user.config = new UserConfig()
+      }
+      if (!user.config?.chatModel) {
+        user.config.chatModel = config?.siteConfig?.chatModels.split(',')[0]
+      }
+      if (user.config?.maxContextCount === undefined) {
+        user.config.maxContextCount = 10
       }
 
       userInfo = {
@@ -444,6 +455,22 @@ router.post('/user-chat-model', auth, async (req, res) => {
     if (user == null || user.status !== Status.Normal)
       throw new Error('用户不存在 | User does not exist.')
     await updateUserChatModel(userId, chatModel)
+    res.send({ status: 'Success', message: '更新成功 | Update successfully' })
+  }
+  catch (error) {
+    res.send({ status: 'Fail', message: error.message, data: null })
+  }
+})
+
+router.post('/user-max-context-count', auth, async (req, res) => {
+  try {
+    const { maxContextCount } = req.body as { maxContextCount: number }
+    const userId = req.headers.userId.toString()
+
+    const user = await getUserById(userId)
+    if (user == null || user.status !== Status.Normal)
+      throw new Error('用户不存在 | User does not exist.')
+    await updateUserMaxContextCount(userId, maxContextCount)
     res.send({ status: 'Success', message: '更新成功 | Update successfully' })
   }
   catch (error) {
@@ -795,13 +822,66 @@ router.post('/setting-search', rootAuth, async (req, res) => {
 
 router.post('/search-test', rootAuth, async (req, res) => {
   try {
-    const { text } = req.body as { search: import('./storage/model').SearchConfig, text: string }
-    // TODO: Implement actual search test logic with Tavily API
-    // For now, just return a success response
-    res.send({ status: 'Success', message: '搜索测试成功 | Search test successful', data: { query: text, results: [] } })
+    const { search, text } = req.body as { search: import('./storage/model').SearchConfig, text: string }
+
+    // Validate search configuration
+    if (!search.enabled) {
+      res.send({ status: 'Fail', message: '搜索功能未启用 | Search functionality is not enabled', data: null })
+      return
+    }
+
+    if (!search.options?.apiKey) {
+      res.send({ status: 'Fail', message: '搜索 API 密钥未配置 | Search API key is not configured', data: null })
+      return
+    }
+
+    if (!text || text.trim() === '') {
+      res.send({ status: 'Fail', message: '搜索文本不能为空 | Search text cannot be empty', data: null })
+      return
+    }
+
+    // Validate maxResults range
+    const maxResults = search.options?.maxResults || 10
+    if (maxResults < 1 || maxResults > 20) {
+      res.send({ status: 'Fail', message: '最大搜索结果数必须在 1-20 之间 | Max search results must be between 1-20', data: null })
+      return
+    }
+
+    // Import required modules
+    const { tavily } = await import('@tavily/core')
+
+    // Execute search
+    const tvly = tavily({ apiKey: search.options.apiKey })
+    const response = await tvly.search(
+      text.trim(),
+      {
+        searchDepth: 'advanced',
+        chunksPerSource: 3,
+        includeRawContent: search.options?.includeRawContent ?? false,
+        maxResults,
+        timeout: 120,
+      },
+    )
+
+    const searchResults = response.results as SearchResult[]
+    const searchUsageTime = response.responseTime
+
+    // Return search results
+    res.send({
+      status: 'Success',
+      message: `搜索测试成功 | Search test successful (用时 ${searchUsageTime}ms, 找到 ${searchResults.length} 个结果)`,
+      data: {
+        query: text.trim(),
+        results: searchResults,
+        usageTime: searchUsageTime,
+        resultCount: searchResults.length,
+        maxResults,
+      },
+    })
   }
-  catch (error) {
-    res.send({ status: 'Fail', message: error.message, data: null })
+  catch (error: any) {
+    console.error('Search test error:', error)
+    res.send({ status: 'Fail', message: `搜索测试失败 | Search test failed: ${error.message}`, data: null })
   }
 })
 
@@ -811,7 +891,6 @@ router.post('/setting-advanced', auth, async (req, res) => {
       systemMessage: string
       temperature: number
       top_p: number
-      maxContextCount: number
       sync: boolean
     }
     if (config.sync) {
@@ -824,7 +903,6 @@ router.post('/setting-advanced', auth, async (req, res) => {
         config.systemMessage,
         config.temperature,
         config.top_p,
-        config.maxContextCount,
       )
       await updateConfig(thisConfig)
       clearConfigCache()
@@ -834,7 +912,6 @@ router.post('/setting-advanced', auth, async (req, res) => {
       config.systemMessage,
       config.temperature,
       config.top_p,
-      config.maxContextCount,
     ))
     res.send({ status: 'Success', message: '操作成功 | Successfully' })
   }
