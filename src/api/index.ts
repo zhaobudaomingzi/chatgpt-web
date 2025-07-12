@@ -1,8 +1,8 @@
-import type { AxiosProgressEvent, GenericAbortSignal } from 'axios'
 import type { AnnounceConfig, AuditConfig, ConfigState, GiftCard, KeyConfig, MailConfig, SearchConfig, SiteConfig, Status, UserInfo, UserPassword, UserPrompt } from '@/components/common/Setting/model'
 import type { SettingsState } from '@/store/modules/user/helper'
 import { useUserStore } from '@/store'
 import { get, post } from '@/utils/request'
+import fetchService from '@/utils/request/fetchService'
 
 export function fetchAnnouncement<T = any>() {
   return post<T>({
@@ -16,7 +16,19 @@ export function fetchChatConfig<T = any>() {
   })
 }
 
-export function fetchChatAPIProcess<T = any>(
+// SSE event handler interface
+interface SSEEventHandlers {
+  onMessage?: (data: any) => void
+  onDelta?: (delta: { reasoning?: string, text?: string }) => void
+  onSearchQuery?: (data: { searchQuery: string }) => void
+  onSearchResults?: (data: { searchResults: any[], searchUsageTime: number }) => void
+  onComplete?: (data: any) => void
+  onError?: (error: string) => void
+  onEnd?: () => void
+}
+
+// SSE chat processing function using custom fetch service
+export function fetchChatAPIProcessSSE(
   params: {
     roomId: number
     uuid: number
@@ -24,10 +36,10 @@ export function fetchChatAPIProcess<T = any>(
     prompt: string
     uploadFileKeys?: string[]
     options?: { conversationId?: string, parentMessageId?: string }
-    signal?: GenericAbortSignal
-    onDownloadProgress?: (progressEvent: AxiosProgressEvent) => void
+    signal?: AbortSignal
   },
-) {
+  handlers: SSEEventHandlers,
+): Promise<void> {
   const userStore = useUserStore()
 
   const data: Record<string, any> = {
@@ -42,11 +54,67 @@ export function fetchChatAPIProcess<T = any>(
     top_p: userStore.userInfo.advanced.top_p,
   }
 
-  return post<T>({
-    url: '/chat-process',
-    data,
-    signal: params.signal,
-    onDownloadProgress: params.onDownloadProgress,
+  return new Promise((resolve, reject) => {
+    fetchService.postStream(
+      {
+        url: '/chat-process',
+        body: data,
+        signal: params.signal,
+      },
+      {
+        onChunk: (line: string) => {
+          if (line.trim() === '')
+            return
+
+          if (line.startsWith('event: ')) {
+            // const _eventType = line.substring(7).trim()
+            return
+          }
+
+          if (line.startsWith('data: ')) {
+            const data = line.substring(6).trim()
+
+            if (data === '[DONE]') {
+              handlers.onEnd?.()
+              resolve()
+              return
+            }
+
+            try {
+              const jsonData = JSON.parse(data)
+
+              // Dispatch to different handlers based on data type
+              if (jsonData.message) {
+                handlers.onError?.(jsonData.message)
+              }
+              else if (jsonData.searchQuery) {
+                handlers.onSearchQuery?.(jsonData)
+              }
+              else if (jsonData.searchResults) {
+                handlers.onSearchResults?.(jsonData)
+              }
+              else if (jsonData.m) {
+                handlers.onDelta?.(jsonData.m)
+              }
+              else {
+                handlers.onMessage?.(jsonData)
+              }
+            }
+            catch (e) {
+              console.error('Failed to parse SSE data:', data, e)
+            }
+          }
+        },
+        onError: (error: Error) => {
+          handlers.onError?.(error.message)
+          reject(error)
+        },
+        onComplete: () => {
+          handlers.onEnd?.()
+          resolve()
+        },
+      },
+    )
   })
 }
 
@@ -94,7 +162,7 @@ export function fetchLogin<T = any>(username: string, password: string, token?: 
 export function fetchLogout<T = any>() {
   return post<T>({
     url: '/user-logout',
-    data: { },
+    data: {},
   })
 }
 
@@ -309,7 +377,7 @@ export function fetchGetChatHistory<T = any>(roomId: number, lastId?: number, al
 export function fetchClearAllChat<T = any>() {
   return post<T>({
     url: '/chat-clear-all',
-    data: { },
+    data: {},
   })
 }
 
